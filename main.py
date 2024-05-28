@@ -1,16 +1,19 @@
 import os
+from datetime import datetime, timezone, timedelta
+
 import cv2
 import numpy as np
+import requests
 import torch
+
 from facenet_pytorch import MTCNN, InceptionResnetV1
-from PIL import Image
 
 # ========= Cấu hình =========
 known_faces_dir = 'known_faces'
 embeddings_file = 'known_face_embeddings.npy'
 recognition_threshold = 0.6  # Ngưỡng nhận diện khuôn mặt
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-
+api_endpoint='https://localhost:7151/api/v1/Employee/checkin'
 # ========= Khởi tạo mô hình =========
 mtcnn = MTCNN(image_size=160, margin=0, keep_all=True, device=device)  # Chuyển MTCNN lên GPU nếu có
 resnet = InceptionResnetV1(pretrained='vggface2').eval().to(device)
@@ -49,6 +52,28 @@ while True:
                 if dist < min_dist:
                     min_dist = dist
                     name = known_name
+            last_sent_name = None
+            if name != "Unknown" and name != last_sent_name:
+                try:
+                    utc_now = datetime.now(timezone.utc)
+
+                    # Tạo đối tượng timezone cho ICT (UTC+7)
+                    ict_timezone = timezone(timedelta(hours=7))
+
+                    # Chuyển đổi thời gian UTC sang ICT
+                    ict_now = utc_now.astimezone(ict_timezone)
+                    data = {
+                        "employeeID": name,
+                        "actual_CheckIn": ict_now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+                    }
+                    headers = {"Content-Type": "application/json"},
+                    url=requests.post(api_endpoint,json=data,verify=False)
+                    print(url.json())
+                    last_sent_name = name
+                except requests.exceptions.RequestException as e:
+                    print(f"Lỗi khi gửi yêu cầu đến API: {e}")
+
 
             # ========= Vẽ và hiển thị kết quả =========
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
